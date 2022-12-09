@@ -1,0 +1,57 @@
+name: Deploy to Azure Storage
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+     - name: Get Code
+       uses: actions/checkout@v3
+     - name: Cache Dependencies
+       id: cache # give an id for this step to be referenced
+       uses: actions/cache@v3
+       with:
+         path: node_modules # cache the whole nodemodules directory
+         key: dependencies-modules-${{hashFiles('**/package-lock.json')}}
+     - name: Install Dependencies
+       if: steps.cache.outputs.cache-hit != 'true' # if no caching was done, install dependencies
+       run: npm ci
+     - name: Run tests
+       run: npm run test --if-present
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+     - name: Fetch Code
+       uses: actions/checkout@v3
+     - name: Cache Dependencies
+       uses: actions/cache@v3
+       with:
+         path: node_modules
+         key: dependencies-modules-${{hashFiles('**/package-lock.json')}}
+     - name: Install Dependencies
+       if: steps.cache.outputs.cache-hit != 'true' #if no caching happened, install dependencies
+       run: npm ci
+     - name: Build Website
+       run: npm run build
+     - name: Upload Artifacts
+       uses: actions/upload-artifact@v3
+       with:
+        name: website_files
+        path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+     - name: Download Artifacts
+       uses: actions/download-artifact@v3
+       with: website_files
+     - name: Print Downloaded Artifacts
+       run: ls
+     - name: Deploy to Azure storage
+       uses: bacongobbler/azure-blob-storage-upload@main
+       with:
+        source_dir: website_files
+        container_name: 'myApp'
+        extra_args: '--pattern *.zip'
+        connection_string: ${{secrets.AZURE_STORAGE_CONNECTION_STRING}}
+
